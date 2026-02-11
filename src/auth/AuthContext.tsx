@@ -15,7 +15,7 @@ import {
     updateProfile,
 } from "firebase/auth";
 import { auth, db } from "../firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
 
 export type Role = "learner" | "teacher";
 
@@ -53,43 +53,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
             return;
         }
 
-        const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+        const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
             if (!firebaseUser) {
                 setUser(null);
                 setLoading(false);
                 return;
             }
 
-            // Get role + profile from Firestore with timeout
-            // If Firestore is slow/blocked, we shouldn't block login
-            let role: Role = "learner";
-            let displayName = firebaseUser.displayName;
-
+            // Real-time listener for profile changes
             const ref = doc(db, "users", firebaseUser.uid);
+            const unsubSnapshot = onSnapshot(
+                ref,
+                (snap) => {
+                    let role: Role = "learner";
+                    let displayName = firebaseUser.displayName;
 
-            try {
-                // Race getDoc against a 1s timeout
-                const snap: any = await Promise.race([
-                    getDoc(ref),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error("Firestore timeout")), 1000)
-                    )
-                ]);
+                    if (snap.exists()) {
+                        const data = snap.data() as { role?: Role; name?: string };
+                        if (data.role) role = data.role;
+                        if (data.name) displayName = data.name;
+                    }
 
-                if (snap && snap.exists()) {
-                    const data = snap.data() as { role?: Role; name?: string };
-                    if (data.role) role = data.role;
-                    if (data.name) displayName = data.name;
+                    setUser({ firebaseUser, role, displayName });
+                    setLoading(false);
+                },
+                (err) => {
+                    console.error("Profile snapshot error:", err);
+                    // Fallback if snapshot fails (e.g. permission issues)
+                    setUser({ firebaseUser, role: "learner", displayName: firebaseUser.displayName });
+                    setLoading(false);
                 }
-            } catch (e) {
-                console.warn("Profile fetch skipped/failed (using default role):", e);
-            }
+            );
 
-            setUser({ firebaseUser, role, displayName });
-            setLoading(false);
+            return () => {
+                unsubSnapshot();
+            };
         });
 
-        return () => unsub();
+        return () => unsubAuth();
     }, []);
 
     const login = async (email: string, password: string) => {
@@ -97,8 +98,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         setLoading(true);
         try {
             await signInWithEmailAndPassword(auth, email, password);
-            // Don't setLoading(false) here! 
-            // Wait for onAuthStateChanged to update the user and unset loading.
         } catch (error) {
             console.error("Login failed:", error);
             setLoading(false);
@@ -132,27 +131,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
             }
 
             // 3. Create Firestore Doc
-            // Note: If this fails (e.g. permission denied), the user is still created in Auth.
-            // We should handle that gracefully.
             const ref = doc(db, "users", cred.user.uid);
             try {
                 await setDoc(ref, { name, role });
                 console.log("Firestore profile created");
             } catch (firestoreError: any) {
                 console.error("Firestore creation failed:", firestoreError);
-                // Optional: We could throw here if we want to force failure,
-                // but usually it's better to let the user in and retry profile creation later.
                 console.warn("Continuing despite Firestore error. User might have limited access.");
             }
-
-            // Force refresh of user state to ensure profile info is picked up
-            setUser({ firebaseUser: cred.user, role, displayName: name });
 
         } catch (error: any) {
             console.error("Signup error:", error);
             throw error; // Re-throw to be caught by UI
         } finally {
-            setLoading(false);
+            // Loading state is handled by the snapshot listener
         }
     };
 
