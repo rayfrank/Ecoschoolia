@@ -5,12 +5,13 @@ import { getStorage } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    apiKey: "AIzaSyBXKbWjQ2dztBAFvC_y8FwgCkf1yrjOeZw",
+    authDomain: "echoschoolai.firebaseapp.com",
+    projectId: "echoschoolai",
+    storageBucket: "echoschoolai.firebasestorage.app",
+    messagingSenderId: "1055501488771",
+    appId: "1:1055501488771:web:1f8fcc86218ad0012841b6",
+    measurementId: "G-1Z234571J1"
 };
 
 // Safety check
