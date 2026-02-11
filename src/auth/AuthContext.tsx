@@ -146,7 +146,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
             }
 
             // Force refresh of user state to ensure profile info is picked up
-            // setUser({ firebaseUser: cred.user, role, displayName: name }); 
+            setUser({ firebaseUser: cred.user, role, displayName: name });
 
         } catch (error: any) {
             console.error("Signup error:", error);
