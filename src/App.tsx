@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BarChart3,
+  Circle,
   CheckCircle2,
   ClipboardList,
   Clock,
@@ -15,6 +16,7 @@ import {
   User,
   X,
 } from "lucide-react";
+import "./App.css";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import AuthShell from "./auth/AuthShell";
 import { useAuth } from "./auth/useAuth";
@@ -33,6 +35,9 @@ import {
 import type { CbcflixItem } from "./types/cbcflix";
 
 type Tab = "home" | "cbcflix" | "cyberverse" | "assignments" | "profile";
+type AppTheme = "liquid" | "jobs";
+
+const THEME_STORAGE_KEY = "ecoschool-ai-theme";
 
 const lessonDetails: Record<string, { objectives: string[]; captions: string[] }> = {
   "fractions-quest": {
@@ -85,6 +90,15 @@ const worlds: CampusZone[] = [
 const App: React.FC = () => {
   const { user, loading, logout } = useAuth();
   const [teacherView, setTeacherView] = useState(true);
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    if (typeof window === "undefined") return "liquid";
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === "jobs" ? "jobs" : "liquid";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">Loading Ecoschool AI...</div>;
   if (!user) return <AuthShell />;
@@ -92,22 +106,38 @@ const App: React.FC = () => {
   const teacherMode = user.role === "teacher" && teacherView;
 
   return (
-    <div className="min-h-screen bg-slate-950 px-4 py-4 text-slate-100 md:px-8 md:py-6">
-      <BackgroundGlow />
+    <div className={`app-theme app-theme-${theme} min-h-screen px-4 py-4 text-slate-100 md:px-8 md:py-6`}>
+      <BackgroundGlow theme={theme} />
       <div className="mx-auto mb-4 flex max-w-6xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="rounded-3xl border border-slate-800 bg-slate-950/85 px-4 py-3">
+        <div className="theme-panel rounded-3xl border border-slate-800 px-4 py-3">
           <p className="text-[11px] uppercase tracking-[0.24em] text-teal-300">Ecoschool AI Demo</p>
           <h1 className="mt-1 text-lg font-semibold">Working local demo with real interactions</h1>
           <p className="mt-1 text-xs text-slate-400">Signed in as {user.displayName || user.firebaseUser.email}</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="theme-panel inline-flex items-center gap-1 rounded-full border border-slate-700 p-1">
+            <button
+              className={`theme-toggle-chip ${theme === "liquid" ? "is-active" : ""}`}
+              onClick={() => setTheme("liquid")}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Liquid Glass
+            </button>
+            <button
+              className={`theme-toggle-chip ${theme === "jobs" ? "is-active" : ""}`}
+              onClick={() => setTheme("jobs")}
+            >
+              <Circle className="h-3.5 w-3.5" />
+              Jobs Mode
+            </button>
+          </div>
           {user.role === "teacher" && (
-            <div className="inline-flex items-center rounded-full border border-slate-700 bg-slate-900/80 p-0.5">
+            <div className="theme-panel inline-flex items-center rounded-full border border-slate-700 p-0.5">
               <button className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs ${!teacherMode ? "bg-slate-950 text-teal-300" : "text-slate-400"}`} onClick={() => setTeacherView(false)}><Home className="h-3.5 w-3.5" />Learner</button>
               <button className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs ${teacherMode ? "bg-slate-950 text-teal-300" : "text-slate-400"}`} onClick={() => setTeacherView(true)}><LayoutDashboard className="h-3.5 w-3.5" />Teacher</button>
             </div>
           )}
-          <button onClick={() => void logout()} className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-400 hover:bg-slate-900">Log out</button>
+          <button onClick={() => void logout()} className="theme-panel rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-400">Log out</button>
         </div>
       </div>
       {teacherMode ? <TeacherDashboard /> : <LearnerShell />}
@@ -115,10 +145,10 @@ const App: React.FC = () => {
   );
 };
 
-const BackgroundGlow = () => (
+const BackgroundGlow: React.FC<{ theme: AppTheme }> = ({ theme }) => (
   <div className="pointer-events-none fixed inset-0 -z-10 opacity-40">
-    <div className="absolute -left-32 top-10 h-72 w-72 rounded-full bg-teal-500/20 blur-3xl" />
-    <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-sky-500/15 blur-3xl" />
+    <div className={`absolute -left-32 top-10 h-72 w-72 rounded-full blur-3xl ${theme === "liquid" ? "bg-teal-500/20" : "bg-white/40"}`} />
+    <div className={`absolute bottom-0 right-0 h-80 w-80 rounded-full blur-3xl ${theme === "liquid" ? "bg-sky-500/15" : "bg-slate-300/60"}`} />
   </div>
 );
 
@@ -142,7 +172,7 @@ const LearnerShell: React.FC = () => {
 
   return (
     <div className="flex w-full items-center justify-center">
-      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-[32px] border border-slate-800/90 bg-slate-950/80 shadow-[0_24px_80px_rgba(15,23,42,0.9)]">
+      <div className="theme-shell flex w-full max-w-sm flex-col overflow-hidden rounded-[32px] border border-slate-800/90 shadow-[0_24px_80px_rgba(15,23,42,0.9)]">
         <div className="flex items-center justify-between border-b border-slate-800 px-6 py-3 text-[11px] text-slate-400">
           <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Ecoschool AI</span>
           <span className="flex items-center gap-1.5"><Film className="h-3.5 w-3.5" />AI + 3D school + CBCflix</span>

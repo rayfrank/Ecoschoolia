@@ -6,7 +6,7 @@ type BaseProps = {
 };
 
 export const Card: React.FC<BaseProps> = ({ className = "", children }) => (
-  <div className={`rounded-2xl border border-gray-700 bg-[#020617] ${className}`}>{children}</div>
+  <div className={`theme-card rounded-2xl border border-gray-700 bg-[#020617] ${className}`}>{children}</div>
 );
 
 export const CardHeader: React.FC<BaseProps> = ({ className = "", children }) => (
@@ -27,7 +27,7 @@ export const Button = ({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { className?: string }) => (
   <button
-    className={`inline-flex items-center justify-center rounded-full bg-teal-500 px-3 py-1 text-sm text-white transition hover:bg-teal-400 ${className}`}
+    className={`theme-button inline-flex items-center justify-center rounded-full bg-teal-500 px-3 py-1 text-sm text-white transition hover:bg-teal-400 ${className}`}
     {...props}
   >
     {children}
