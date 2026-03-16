@@ -38,6 +38,7 @@ type Tab = "home" | "cbcflix" | "cyberverse" | "assignments" | "profile";
 type AppTheme = "liquid" | "jobs";
 
 const THEME_STORAGE_KEY = "ecoschool-ai-theme";
+const CONVAI_EXPERIENCE_ID = "fe995afc-c982-47d2-90a6-1fb97043cfa5";
 
 const lessonDetails: Record<string, { objectives: string[]; captions: string[] }> = {
   "fractions-quest": {
@@ -75,6 +76,16 @@ type CampusZone = {
   color: string;
   typeLabel: string;
 };
+
+type PixelStreamClientInstance = {
+  initializeExperience?: () => Promise<void>;
+};
+
+declare global {
+  interface Window {
+    PixelStreamClient?: new (options: { container: HTMLElement; expId: string }) => PixelStreamClientInstance;
+  }
+}
 
 const worlds: CampusZone[] = [
   { name: "Administration Block", description: "Welcome center, notices and campus briefing.", action: "Check school briefing", challenge: "Which office keeps student progress records?", options: ["Library desk", "Administration office", "Dining hall"], correctIndex: 1, x: 0, z: -220, width: 220, color: "from-slate-400/80 to-slate-700/90", typeLabel: "Main office" },
@@ -490,7 +501,120 @@ const VirtualSchoolHub: React.FC<{ onMissionStart: (world: CampusZone) => void }
           </div>
         </CardContent>
       </Card>
+      <ConvaiExperienceCard />
     </motion.div>
+  );
+};
+
+const ConvaiExperienceCard: React.FC = () => {
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const containerId = "convai-embed-container";
+
+    const mountExperience = () => {
+      const container = document.getElementById(containerId);
+      if (!container || !window.PixelStreamClient) {
+        if (mounted) {
+          setStatus("error");
+          setError("Convai embed client is not available.");
+        }
+        return;
+      }
+
+      container.innerHTML = "";
+
+      try {
+        const client = new window.PixelStreamClient({
+          container,
+          expId: CONVAI_EXPERIENCE_ID,
+        });
+
+        void client.initializeExperience?.();
+        if (mounted) {
+          setStatus("ready");
+          setError(null);
+        }
+      } catch {
+        if (mounted) {
+          setStatus("error");
+          setError("Convai experience could not be initialized.");
+        }
+      }
+    };
+
+    if (window.PixelStreamClient) {
+      mountExperience();
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>('script[data-convai-embed="true"]');
+    if (existingScript) {
+      existingScript.addEventListener("load", mountExperience, { once: true });
+      existingScript.addEventListener("error", () => {
+        if (mounted) {
+          setStatus("error");
+          setError("Failed to load the Convai embed client.");
+        }
+      }, { once: true });
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/@convai/experience-embed/dist/convai-embed.umd.js";
+    script.async = true;
+    script.dataset.convaiEmbed = "true";
+    script.onload = mountExperience;
+    script.onerror = () => {
+      if (mounted) {
+        setStatus("error");
+        setError("Failed to load the Convai embed client.");
+      }
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return (
+    <Card className="border-slate-800 bg-gradient-to-r from-slate-900 via-emerald-950/70 to-slate-900">
+      <CardHeader className="pb-2">
+        <p className="flex items-center gap-1 text-xs uppercase tracking-wide text-emerald-300"><School className="h-4 w-4" />Live AI Lab</p>
+        <CardTitle className="text-lg text-slate-100">Convai science lab experience</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-1">
+        <p className="text-[11px] text-slate-400">
+          This embeds your published Convai experience directly inside Ecoschool AI using experience ID <span className="font-medium text-slate-300">{CONVAI_EXPERIENCE_ID}</span>.
+        </p>
+        <div className="overflow-hidden rounded-3xl border border-slate-800 bg-black/40">
+          <div id="convai-embed-container" className="min-h-[340px] w-full" />
+          {status !== "ready" && (
+            <div className="flex min-h-[340px] w-full flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),_rgba(2,6,23,0.95)_62%)] px-5 text-center">
+              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-300">
+                {status === "loading" ? "Loading embed" : "Embed unavailable"}
+              </div>
+              <p className="max-w-md text-sm font-medium text-slate-100">
+                {status === "loading" ? "Connecting to the live Convai lab experience." : "The live Convai lab could not be shown here yet."}
+              </p>
+              <p className="max-w-md text-[11px] text-slate-400">
+                {error ?? "If this stays blank, whitelist your domain in Convai and make sure the experience is published."}
+              </p>
+            </div>
+          )}
+        </div>
+        <p className="text-[10px] text-slate-500">
+          Convai requires the site domain to be whitelisted for this experience before the embed will run.
+        </p>
+      </CardContent>
+    </Card>
   );
 };
 
