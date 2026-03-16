@@ -34,11 +34,12 @@ import {
 } from "./lib/demoData";
 import type { CbcflixItem } from "./types/cbcflix";
 
-type Tab = "home" | "cbcflix" | "cyberverse" | "assignments" | "profile";
+type Tab = "home" | "cbcflix" | "cyberverse" | "ai" | "assignments" | "profile";
 type AppTheme = "liquid" | "jobs";
 
 const THEME_STORAGE_KEY = "ecoschool-ai-theme";
-const CONVAI_EXPERIENCE_ID = "fe995afc-c982-47d2-90a6-1fb97043cfa5";
+const OPENROUTER_MODEL = "openrouter/free";
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const lessonDetails: Record<string, { objectives: string[]; captions: string[] }> = {
   "fractions-quest": {
@@ -76,16 +77,10 @@ type CampusZone = {
   color: string;
   typeLabel: string;
 };
-
-type PixelStreamClientInstance = {
-  initializeExperience?: () => Promise<void>;
+type TutorMessage = {
+  role: "user" | "assistant";
+  content: string;
 };
-
-declare global {
-  interface Window {
-    PixelStreamClient?: new (options: { container: HTMLElement; expId: string }) => PixelStreamClientInstance;
-  }
-}
 
 const worlds: CampusZone[] = [
   { name: "Administration Block", description: "Welcome center, notices and campus briefing.", action: "Check school briefing", challenge: "Which office keeps student progress records?", options: ["Library desk", "Administration office", "Dining hall"], correctIndex: 1, x: 0, z: -220, width: 220, color: "from-slate-400/80 to-slate-700/90", typeLabel: "Main office" },
@@ -192,6 +187,7 @@ const LearnerShell: React.FC = () => {
           {activeTab === "home" && <LearnerHome onNavigate={setActiveTab} stats={stats} />}
           {activeTab === "cbcflix" && <CbcflixScreen items={items} status={status} error={error} onPlay={openVideo} />}
           {activeTab === "cyberverse" && <VirtualSchoolHub onMissionStart={(world) => setSelectedWorld(world)} />}
+          {activeTab === "ai" && <OpenRouterTutorCard />}
           {activeTab === "assignments" && <AssignmentsScreen assignments={assignments} onOpen={(assignment) => setSelectedAssignmentId(assignment.id)} onStart={startAssignment} onSubmit={submitAssignment} />}
           {activeTab === "profile" && <ProfileScreen stats={stats} assignments={assignments} />}
         </div>
@@ -247,8 +243,9 @@ const LearnerHome: React.FC<{ onNavigate: (tab: Tab) => void; stats: { videosWat
         </div>
       </CardContent>
     </Card>
-    <div className="grid grid-cols-4 gap-2 text-xs">
+    <div className="grid grid-cols-5 gap-2 text-xs">
       <QuickAction label="3D School" icon={<Globe2 className="h-4 w-4" />} onClick={() => onNavigate("cyberverse")} />
+      <QuickAction label="AI Tutor" icon={<Sparkles className="h-4 w-4" />} onClick={() => onNavigate("ai")} />
       <QuickAction label="CBCflix" icon={<Film className="h-4 w-4" />} onClick={() => onNavigate("cbcflix")} />
       <QuickAction label="Tasks" icon={<ClipboardList className="h-4 w-4" />} onClick={() => onNavigate("assignments")} />
       <QuickAction label="Profile" icon={<User className="h-4 w-4" />} onClick={() => onNavigate("profile")} />
@@ -501,117 +498,164 @@ const VirtualSchoolHub: React.FC<{ onMissionStart: (world: CampusZone) => void }
           </div>
         </CardContent>
       </Card>
-      <ConvaiExperienceCard />
     </motion.div>
   );
 };
 
-const ConvaiExperienceCard: React.FC = () => {
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+const OpenRouterTutorCard: React.FC = () => {
+  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined;
+  const [messages, setMessages] = useState<TutorMessage[]>([
+    {
+      role: "assistant",
+      content:
+        "I am your Ecoschool AI tutor. Ask me about science, budgeting, digital safety, writing, or assignments and I will coach you step by step.",
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const suggestions = [
+    "Explain the water cycle using a school garden example.",
+    "Quiz me on password safety for Grade 7.",
+    "Help me plan a simple weekly lunch budget.",
+  ];
 
-  useEffect(() => {
-    let mounted = true;
-    const containerId = "convai-embed-container";
+  const getDemoReply = (prompt: string) => {
+    const lowerPrompt = prompt.toLowerCase();
+    if (lowerPrompt.includes("water cycle")) {
+      return "The water cycle has four main stages: evaporation, condensation, precipitation, and collection. In a school garden, the sun heats puddles and wet soil, water turns into vapor, clouds form when that vapor cools, then rain falls and waters the garden again.";
+    }
+    if (lowerPrompt.includes("password")) {
+      return "Quick quiz: 1. Which is stronger: `school123` or `S!mbaa_2026`? 2. Should you share a password with a friend? 3. What extra step makes logins safer besides a password? Answers: the second password, no, and two-factor verification.";
+    }
+    if (lowerPrompt.includes("budget")) {
+      return "Start with three columns: money in, needs, and wants. Example weekly lunch budget: KES 500 in, KES 350 for lunch needs, KES 100 for fruit or water, KES 50 saved. The key rule is to fund needs first, then save, then spend on extras.";
+    }
+    if (lowerPrompt.includes("fraction")) {
+      return "To add fractions with unlike denominators, first find a common denominator. Example: 1/2 + 1/4 becomes 2/4 + 1/4 = 3/4.";
+    }
+    return "I can help with science, writing, budgeting, fractions, assignments, and digital safety. Ask me for an explanation, a quiz, or step-by-step help.";
+  };
 
-    const mountExperience = () => {
-      const container = document.getElementById(containerId);
-      if (!container || !window.PixelStreamClient) {
-        if (mounted) {
-          setStatus("error");
-          setError("Convai embed client is not available.");
-        }
-        return;
-      }
+  const sendMessage = async (text: string) => {
+    if (!text.trim()) return;
 
-      container.innerHTML = "";
+    const userMessage: TutorMessage = { role: "user", content: text.trim() };
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setInput("");
+    setStatus("loading");
+    setError(null);
 
-      try {
-        const client = new window.PixelStreamClient({
-          container,
-          expId: CONVAI_EXPERIENCE_ID,
-        });
-
-        void client.initializeExperience?.();
-        if (mounted) {
-          setStatus("ready");
-          setError(null);
-        }
-      } catch {
-        if (mounted) {
-          setStatus("error");
-          setError("Convai experience could not be initialized.");
-        }
-      }
-    };
-
-    if (window.PixelStreamClient) {
-      mountExperience();
-      return () => {
-        mounted = false;
-      };
+    if (!apiKey) {
+      window.setTimeout(() => {
+        setMessages((current) => [...current, { role: "assistant", content: getDemoReply(text.trim()) }]);
+        setStatus("idle");
+      }, 500);
+      return;
     }
 
-    const existingScript = document.querySelector<HTMLScriptElement>('script[data-convai-embed="true"]');
-    if (existingScript) {
-      existingScript.addEventListener("load", mountExperience, { once: true });
-      existingScript.addEventListener("error", () => {
-        if (mounted) {
-          setStatus("error");
-          setError("Failed to load the Convai embed client.");
-        }
-      }, { once: true });
-      return () => {
-        mounted = false;
-      };
-    }
+    try {
+      const response = await fetch(OPENROUTER_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": window.location.origin,
+          "X-Title": "Ecoschool AI",
+        },
+        body: JSON.stringify({
+          model: OPENROUTER_MODEL,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are Ecoschool AI, a concise Kenyan curriculum-friendly tutor for learners and teachers. Be practical, clear, and age-appropriate. Use short explanations, quizzes, and step-by-step coaching.",
+            },
+            ...nextMessages,
+          ],
+        }),
+      });
 
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/@convai/experience-embed/dist/convai-embed.umd.js";
-    script.async = true;
-    script.dataset.convaiEmbed = "true";
-    script.onload = mountExperience;
-    script.onerror = () => {
-      if (mounted) {
-        setStatus("error");
-        setError("Failed to load the Convai embed client.");
+      if (!response.ok) {
+        throw new Error(`OpenRouter request failed with status ${response.status}.`);
       }
-    };
-    document.body.appendChild(script);
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const reply = data.choices?.[0]?.message?.content?.trim();
+
+      if (!reply) {
+        throw new Error("OpenRouter returned an empty response.");
+      }
+
+      setMessages((current) => [...current, { role: "assistant", content: reply }]);
+      setStatus("idle");
+    } catch (requestError) {
+      setStatus("error");
+      setError(requestError instanceof Error ? requestError.message : "OpenRouter request failed.");
+    }
+  };
 
   return (
     <Card className="border-slate-800 bg-gradient-to-r from-slate-900 via-emerald-950/70 to-slate-900">
       <CardHeader className="pb-2">
         <p className="flex items-center gap-1 text-xs uppercase tracking-wide text-emerald-300"><School className="h-4 w-4" />Live AI Lab</p>
-        <CardTitle className="text-lg text-slate-100">Convai science lab experience</CardTitle>
+        <CardTitle className="text-lg text-slate-100">OpenRouter free tutor</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 pt-1">
         <p className="text-[11px] text-slate-400">
-          This embeds your published Convai experience directly inside Ecoschool AI using experience ID <span className="font-medium text-slate-300">{CONVAI_EXPERIENCE_ID}</span>.
+          This uses <span className="font-medium text-slate-300">{OPENROUTER_MODEL}</span> through OpenRouter&apos;s OpenAI-compatible chat API for a free in-app tutor, with local demo fallback when no key is configured.
         </p>
-        <div className="overflow-hidden rounded-3xl border border-slate-800 bg-black/40">
-          <div id="convai-embed-container" className="min-h-[340px] w-full" />
-          {status !== "ready" && (
-            <div className="flex min-h-[340px] w-full flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),_rgba(2,6,23,0.95)_62%)] px-5 text-center">
-              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-300">
-                {status === "loading" ? "Loading embed" : "Embed unavailable"}
+        <div className="space-y-3 overflow-hidden rounded-3xl border border-slate-800 bg-black/25 p-3">
+          <div className="flex flex-wrap gap-2">
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                onClick={() => void sendMessage(suggestion)}
+                className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1 text-[10px] text-slate-300"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+          <div className="max-h-[300px] space-y-3 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+            {messages.map((message, index) => (
+              <div
+                key={`${message.role}-${index}`}
+                className={`rounded-2xl px-3 py-2 text-left text-[12px] ${
+                  message.role === "assistant"
+                    ? "mr-6 border border-emerald-900/40 bg-emerald-500/10 text-slate-100"
+                    : "ml-6 border border-sky-900/40 bg-sky-500/10 text-slate-100"
+                }`}
+              >
+                <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-400">{message.role === "assistant" ? "Ecoschool AI" : "You"}</p>
+                <p className="whitespace-pre-wrap">{message.content}</p>
               </div>
-              <p className="max-w-md text-sm font-medium text-slate-100">
-                {status === "loading" ? "Connecting to the live Convai lab experience." : "The live Convai lab could not be shown here yet."}
-              </p>
-              <p className="max-w-md text-[11px] text-slate-400">
-                {error ?? "If this stays blank, whitelist your domain in Convai and make sure the experience is published."}
-              </p>
-            </div>
-          )}
+            ))}
+            {status === "loading" && (
+              <div className="mr-6 rounded-2xl border border-emerald-900/40 bg-emerald-500/10 px-3 py-2 text-left text-[12px] text-slate-100">
+                <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-400">Ecoschool AI</p>
+                <p>Thinking...</p>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="Ask about fractions, writing, budgeting, digital safety, or school assignments."
+              className="min-h-[92px] flex-1 rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+            />
+            <Button className="self-end px-4 py-2" onClick={() => void sendMessage(input)} disabled={status === "loading"}>
+              Send
+            </Button>
+          </div>
+          {error && <p className="text-[11px] text-rose-300">{error}</p>}
         </div>
         <p className="text-[10px] text-slate-500">
-          Convai requires the site domain to be whitelisted for this experience before the embed will run.
+          Add <span className="font-medium text-slate-400">VITE_OPENROUTER_API_KEY</span> in your environment for live OpenRouter responses. If no key is present, the tutor stays usable in demo mode with built-in answers.
         </p>
       </CardContent>
     </Card>
@@ -912,10 +956,11 @@ const BottomNav: React.FC<{ activeTab: Tab; onChange: (tab: Tab) => void }> = ({
     { id: "home", label: "Home", icon: <Home className="h-5 w-5" /> },
     { id: "cbcflix", label: "CBCflix", icon: <Film className="h-5 w-5" /> },
     { id: "cyberverse", label: "3D School", icon: <Globe2 className="h-5 w-5" /> },
+    { id: "ai", label: "AI", icon: <Sparkles className="h-5 w-5" /> },
     { id: "assignments", label: "Tasks", icon: <ClipboardList className="h-5 w-5" /> },
     { id: "profile", label: "Profile", icon: <User className="h-5 w-5" /> },
   ];
-  return <div className="border-t border-slate-800 bg-slate-950/95 px-2 py-1"><div className="grid grid-cols-5 gap-1">{items.map((item) => <button key={item.id} onClick={() => onChange(item.id)} className={`flex flex-col items-center justify-center rounded-2xl py-1 text-[10px] ${activeTab === item.id ? "bg-slate-800 text-teal-300" : "text-slate-400 hover:bg-slate-900"}`}><div className="mb-0.5">{item.icon}</div><span>{item.label}</span></button>)}</div></div>;
+  return <div className="border-t border-slate-800 bg-slate-950/95 px-2 py-1"><div className="grid grid-cols-6 gap-1">{items.map((item) => <button key={item.id} onClick={() => onChange(item.id)} className={`flex flex-col items-center justify-center rounded-2xl py-1 text-[10px] ${activeTab === item.id ? "bg-slate-800 text-teal-300" : "text-slate-400 hover:bg-slate-900"}`}><div className="mb-0.5">{item.icon}</div><span>{item.label}</span></button>)}</div></div>;
 };
 
 const QuickAction: React.FC<{ label: string; icon: React.ReactNode; onClick: () => void }> = ({ label, icon, onClick }) => (
